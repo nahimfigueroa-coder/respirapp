@@ -1,0 +1,15 @@
+{
+  "name": "RespirApp",
+  "short_name": "RespirApp",
+  "description": "Herramienta de apoyo para evaluación y seguimiento en terapia respiratoria.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f8fc",
+  "theme_color": "#0877d1",
+  "lang": "es",
+  "icons": [
+    {"src":"icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
+}
