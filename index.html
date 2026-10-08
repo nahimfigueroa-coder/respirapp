@@ -49,6 +49,8 @@ nav{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--line);di
 <section id="info" class="screen"><button class="back" onclick="show('home')">← Inicio</button><div class="card"><h2>Fuentes y seguridad</h2><p class="muted">RespirApp separa cálculos de decisiones clínicas. Las fórmulas se documentan para facilitar revisión independiente.</p><h3>Referencias principales</h3><p class="source">• NHLBI / ARDS Network: protocolo con ecuaciones de PBW y estrategia de volumen corriente. <a href="https://biolincc.nhlbi.nih.gov/media/studies/factt/Protocol.pdf" target="_blank">Protocolo ARDSNet</a></p><p class="source">• ATS/ERS: estándares técnicos de espirometría. <a href="https://www.thoracic.org/statements/resources/pfet/spirometry.pdf" target="_blank">Documento ATS/ERS</a></p><p class="source">• Para P/F y criterios relacionados con SDRA, la app no realiza diagnóstico automático; deben aplicarse las definiciones y guías vigentes correspondientes.</p><div class="dangerbox"><b>Privacidad:</b> esta versión guarda los registros en el almacenamiento local del navegador. No debe utilizarse para introducir información identificable de pacientes en un dispositivo compartido o no autorizado.</div></div></section>
 <section id="report" class="screen"><div id="reportContent"></div></section>
 </main><nav><button class="navbtn active" onclick="show('home')">⌂<br>Inicio</button><button class="navbtn" onclick="startEval()">＋<br>Evaluar</button><button class="navbtn" onclick="show('calc')">▦<br>Calculadoras</button><button class="navbtn" onclick="show('history')">☷<br>Historial</button></nav></div>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
 <script>
 let currentStep=1, currentEval=null;
 const $=id=>document.getElementById(id); const val=id=>$(id)?.value||'';
@@ -65,9 +67,153 @@ function buildSummary(){currentEval=collect();let e=currentEval;$('summary').inn
 function esc(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function saveEval(){let arr=JSON.parse(localStorage.getItem('respirapp_evals')||'[]');arr.unshift(currentEval||collect());localStorage.setItem('respirapp_evals',JSON.stringify(arr.slice(0,100)));alert('Evaluación guardada en este dispositivo.');show('history')}
 function renderHistory(){let arr=JSON.parse(localStorage.getItem('respirapp_evals')||'[]');$('historyList').innerHTML=arr.length?arr.map((e,i)=>'<div class="card"><b>'+esc(e.id||'Sin identificador')+'</b> <span class="pill">'+esc(e.date)+'</span><p class="muted">SpO₂ '+esc(e.spo2||'—')+'% · '+esc(e.tech||'Sin intervención')+'</p><button class="btn secondary" onclick="viewSaved('+i+')">Ver resumen</button></div>').join(''):'<div class="empty">No hay evaluaciones guardadas.</div>'}
-function viewSaved(i){let arr=JSON.parse(localStorage.getItem('respirapp_evals')||'[]'),e=arr[i];if(!e)return;currentEval=e;$('reportContent').innerHTML=reportHTML(e);show('report')}
-function reportHTML(e){return '<div class="card"><h1>RespirApp — Informe</h1><p class="muted">Fecha: '+esc(e.date)+'</p><h3>Paciente</h3><p>'+esc(e.id||'Sin identificador')+' · '+esc(e.age||'—')+' años · '+esc(e.sex||'—')+'</p><h3>Evaluación</h3><p>Motivo: '+esc(e.reason||'—')+'<br>FC: '+esc(e.hr||'—')+' lpm · FR: '+esc(e.rr||'—')+' rpm · SpO₂: '+esc(e.spo2||'—')+'% · PA: '+esc(e.bp||'—')+'<br>O₂: '+esc(e.o2)+' · '+esc(e.flow||'—')+' L/min</p><h3>Hallazgos</h3><p>Disnea: '+esc(e.dyspnea)+' · Tos: '+esc(e.cough)+' · Secreciones: '+esc(e.secretions)+' · Expansión: '+esc(e.expansion)+'<br>Auscultación: '+esc(e.aus.join(', ')||'No marcado')+'<br>'+esc(e.findings||'')+'</p><h3>Intervención</h3><p>'+esc(e.tech)+' · '+esc(e.duration||'—')+' min · '+esc(e.device||'—')+'<br>'+esc(e.interventionNotes||'')+'</p><h3>Respuesta</h3><table class="table"><tr><th>Parámetro</th><th>Antes</th><th>Después</th></tr><tr><td>SpO₂</td><td>'+esc(e.preSpo2||'—')+'</td><td>'+esc(e.postSpo2||'—')+'</td></tr><tr><td>FC</td><td>'+esc(e.preHr||'—')+'</td><td>'+esc(e.postHr||'—')+'</td></tr><tr><td>FR</td><td>'+esc(e.preRr||'—')+'</td><td>'+esc(e.postRr||'—')+'</td></tr></table><p>'+esc(e.responseNotes||'')+'</p><div class="notice no-print">Documento generado por RespirApp como registro estructurado. Verificar la información y aplicar el protocolo institucional correspondiente.</div><div class="actions no-print"><button class="btn primary" onclick="window.print()">Imprimir / Guardar como PDF</button><button class="btn secondary" onclick="show(\'history\')">Volver</button></div></div>'}
-function printReport(){if(!currentEval)return;const w=window.open('','_blank');if(!w)return;w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>RespirApp - Informe</title><style>body{font-family:Arial,sans-serif;padding:20px;color:#103653}table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #ccc;padding:8px;text-align:left}.no-print{display:none!important}</style></head><body>'+reportHTML(currentEval)+'</body></html>');w.document.close();setTimeout(()=>w.print(),500)}
+async function printReport(){if(!currentEval)return;show('report');$('reportContent').innerHTML=reportHTML(currentEval);await pdfReport()}
+async function pdfReport(){
+if(!currentEval)return;
+
+const {jsPDF}=window.jspdf;
+const e=currentEval;
+const doc=new jsPDF();
+
+doc.setFont('helvetica','bold');
+doc.setFontSize(18);
+doc.text('RespirApp - Informe',14,18);
+
+doc.setFont('helvetica','normal');
+doc.setFontSize(10);
+doc.text('Fecha: '+String(e.date||'—'),14,26);
+
+let y=36;
+
+doc.setFont('helvetica','bold');
+doc.setFontSize(12);
+doc.text('Paciente',14,y);
+y+=7;
+
+doc.setFont('helvetica','normal');
+doc.setFontSize(10);
+doc.text('Identificador: '+String(e.id||'Sin identificador'),14,y);
+y+=6;
+doc.text('Edad: '+String(e.age||'—')+' años    Sexo: '+String(e.sex||'—'),14,y);
+y+=10;
+
+doc.setFont('helvetica','bold');
+doc.setFontSize(12);
+doc.text('Evaluación',14,y);
+y+=7;
+
+doc.setFont('helvetica','normal');
+doc.setFontSize(10);
+
+const evaluacion=[
+'Motivo: '+String(e.reason||'—'),
+'FC: '+String(e.hr||'—')+' lpm    FR: '+String(e.rr||'—')+' rpm    SpO2: '+String(e.spo2||'—')+'%',
+'PA: '+String(e.bp||'—'),
+'O2: '+String(e.o2||'—')+'    Flujo: '+String(e.flow||'—')+' L/min',
+'Disnea: '+String(e.dyspnea||'—')+'    Tos: '+String(e.cough||'—'),
+'Secreciones: '+String(e.secretions||'—')+'    Expansión: '+String(e.expansion||'—'),
+'Auscultación: '+String((e.aus||[]).join(', ')||'No marcado'),
+'Observaciones: '+String(e.findings||'—')
+];
+
+evaluacion.forEach(t=>{
+const lines=doc.splitTextToSize(t,180);
+doc.text(lines,14,y);
+y+=6*lines.length;
+});
+
+y+=4;
+
+doc.setFont('helvetica','bold');
+doc.setFontSize(12);
+doc.text('Intervención',14,y);
+y+=7;
+
+doc.setFont('helvetica','normal');
+doc.setFontSize(10);
+
+const intervencion=[
+'Técnica: '+String(e.tech||'—'),
+'Duración: '+String(e.duration||'—')+' min    Dispositivo: '+String(e.device||'—'),
+'Observaciones: '+String(e.interventionNotes||'—')
+];
+
+intervencion.forEach(t=>{
+const lines=doc.splitTextToSize(t,180);
+doc.text(lines,14,y);
+y+=6*lines.length;
+});
+
+y+=4;
+
+doc.setFont('helvetica','bold');
+doc.setFontSize(12);
+doc.text('Respuesta antes / después',14,y);
+y+=5;
+
+doc.autoTable({
+startY:y,
+head:[['Parámetro','Antes','Después']],
+body:[
+['SpO2',String(e.preSpo2||'—'),String(e.postSpo2||'—')],
+['FC',String(e.preHr||'—'),String(e.postHr||'—')],
+['FR',String(e.preRr||'—'),String(e.postRr||'—')]
+],
+theme:'grid',
+styles:{font:'helvetica',fontSize:9}
+});
+
+y=doc.lastAutoTable.finalY+10;
+
+doc.setFont('helvetica','normal');
+doc.setFontSize(10);
+
+const respuesta=doc.splitTextToSize(
+'Respuesta clínica / observaciones: '+String(e.responseNotes||'—'),
+180
+);
+
+doc.text(respuesta,14,y);
+y+=6*respuesta.length;
+
+if(y>270){
+doc.addPage();
+y=20;
+}
+
+doc.setFontSize(8);
+doc.setTextColor(100);
+doc.text(
+'Documento generado por RespirApp como registro estructurado. Verificar la información y aplicar el protocolo institucional correspondiente.',
+14,y,{maxWidth:180}
+);
+
+const pdfBlob=doc.output('blob');
+const file=new File([pdfBlob],'RespirApp-Informe.pdf',{type:'application/pdf'});
+
+if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+try{
+await navigator.share({
+files:[file],
+title:'RespirApp - Informe'
+});
+return;
+}catch(err){
+if(err&&err.name==='AbortError')return;
+}
+}
+
+const url=URL.createObjectURL(pdfBlob);
+const a=document.createElement('a');
+a.href=url;
+a.download='RespirApp-Informe.pdf';
+document.body.appendChild(a);
+a.click();
+a.remove();
+setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function reportHTML(e){return '<div class="card"><h1>RespirApp — Informe</h1><p class="muted">Fecha: '+esc(e.date)+'</p><h3>Paciente</h3><p>'+esc(e.id||'Sin identificador')+' · '+esc(e.age||'—')+' años · '+esc(e.sex||'—')+'</p><h3>Evaluación</h3><p>Motivo: '+esc(e.reason||'—')+'<br>FC: '+esc(e.hr||'—')+' lpm · FR: '+esc(e.rr||'—')+' rpm · SpO₂: '+esc(e.spo2||'—')+'% · PA: '+esc(e.bp||'—')+'<br>O₂: '+esc(e.o2)+' · '+esc(e.flow||'—')+' L/min</p><h3>Hallazgos</h3><p>Disnea: '+esc(e.dyspnea)+' · Tos: '+esc(e.cough)+' · Secreciones: '+esc(e.secretions)+' · Expansión: '+esc(e.expansion)+'<br>Auscultación: '+esc(e.aus.join(', ')||'No marcado')+'<br>'+esc(e.findings||'')+'</p><h3>Intervención</h3><p>'+esc(e.tech)+' · '+esc(e.duration||'—')+' min · '+esc(e.device||'—')+'<br>'+esc(e.interventionNotes||'')+'</p><h3>Respuesta</h3><table class="table"><tr><th>Parámetro</th><th>Antes</th><th>Después</th></tr><tr><td>SpO₂</td><td>'+esc(e.preSpo2||'—')+'</td><td>'+esc(e.postSpo2||'—')+'</td></tr><tr><td>FC</td><td>'+esc(e.preHr||'—')+'</td><td>'+esc(e.postHr||'—')+'</td></tr><tr><td>FR</td><td>'+esc(e.preRr||'—')+'</td><td>'+esc(e.postRr||'—')+'</td></tr></table><p>'+esc(e.responseNotes||'')+'</p><div class="notice no-print">Documento generado por RespirApp como registro estructurado. Verificar la información y aplicar el protocolo institucional correspondiente.</div><div class="actions no-print"><button class="btn primary" onclick="pdfReport()">Imprimir / Guardar como PDF</button><button class="btn secondary" onclick="show(\'history\')">Volver</button></div></div>'}
+
 function clearHistory(){if(confirm('¿Borrar todas las evaluaciones guardadas en este dispositivo?')){localStorage.removeItem('respirapp_evals');renderHistory()}}
 </script><script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));}</script>
 </body></html>
